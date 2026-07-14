@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ROTARACT CLUB OF PSVPEC — Attendance Management System</title>
+  <meta name="description" content="Professional attendance tracking and member management system for ROTARACT CLUB OF PSVPEC. Manage members, track attendance, and generate reports.">
+
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Favicon (Rotaract gold gear) -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙️</text></svg>">
+</head>
+<body>
+
+  <!-- ============================================================
+       PRELOADER
+       ============================================================ -->
+  <div id="preloader">
+    <div class="preloader-spinner"></div>
+    <p class="preloader-text">Loading ROTARACT CLUB OF PSVPEC...</p>
+  </div>
+
+  <!-- ============================================================
+       LOGIN SCREEN
+       ============================================================ -->
+  <div id="login-screen">
+    <div class="login-card">
+      <div class="login-logo" style="background:none; border-radius:0; box-shadow:none; height:auto; width:auto; margin-bottom:16px;">
+        <img src="images/racpsvpec_logo.png" alt="ROTARACT CLUB OF PSVPEC Logo" style="max-height:100px; margin:0 auto; object-fit:contain;">
+      </div>
+      <h1 style="font-size:1.45rem;">ROTARACT CLUB OF PSVPEC</h1>
+      <p class="login-subtitle">Attendance Management System</p>
+      <form class="login-form" id="login-form">
+        <div class="form-group">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" placeholder="admin@rotaract.club" required autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="login-btn" id="login-btn">
+          <span class="login-btn-text">Sign In</span>
+        </button>
+      </form>
+      <p class="login-error" id="login-error"></p>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MAIN APPLICATION
+       ============================================================ -->
+  <div id="app" class="hidden">
+
+    <!-- ---- NAVBAR ---- -->
+    <nav id="navbar">
+      <div class="nav-brand" onclick="switchTab('dashboard')">
+        <div class="nav-brand-icon" style="background:none; display:flex; align-items:center; justify-content:center; width:40px; height:40px;">
+          <img src="images/racpsvpec_logo.png" alt="Logo" style="max-height:100%; max-width:100%; object-fit:contain;">
+        </div>
+        <span style="font-size:0.95rem; font-weight:800; letter-spacing:0.02em;">ROTARACT CLUB OF PSVPEC</span>
+      </div>
+
+      <div class="nav-tabs" id="nav-tabs">
+        <button class="nav-tab active" data-tab="dashboard">
+          <i class="fas fa-th-large"></i>
+          <span>Dashboard</span>
+        </button>
+        <button class="nav-tab" data-tab="attendance">
+          <i class="fas fa-clipboard-check"></i>
+          <span>Attendance</span>
+        </button>
+        <button class="nav-tab" data-tab="members">
+          <i class="fas fa-users"></i>
+          <span>Members</span>
+        </button>
+        <button class="nav-tab" data-tab="reports">
+          <i class="fas fa-chart-bar"></i>
+          <span>Reports</span>
+        </button>
+        <button class="nav-tab" data-tab="settings">
+          <i class="fas fa-sliders-h"></i>
+          <span>Settings</span>
+        </button>
+      </div>
+
+      <div class="nav-actions">
+        <span class="nav-admin-badge" id="admin-badge">
+          <i class="fas fa-shield-alt"></i>
+          <span id="admin-email-display">Admin</span>
+        </span>
+        <button class="nav-action-btn" id="theme-toggle-btn" title="Toggle Theme">
+          <i class="fas fa-moon" id="theme-icon"></i>
+        </button>
+        <button class="nav-action-btn" id="logout-btn" title="Logout">
+          <i class="fas fa-sign-out-alt"></i>
+        </button>
+      </div>
+    </nav>
+
+    <!-- ---- MAIN CONTENT ---- -->
+    <main id="main-content">
+
+      <!-- ==========================================
+           DASHBOARD TAB
+           ========================================== -->
+      <section id="dashboard-tab" class="tab-content active">
+        <div class="section-header">
+          <h1>Dashboard</h1>
+          <p>Overview of your Rotaract Club activity</p>
+        </div>
+
+        <!-- Stat Cards -->
+        <div class="dashboard-stats">
+          <div class="stat-card">
+            <div class="stat-icon blue"><i class="fas fa-users"></i></div>
+            <div class="stat-info">
+              <span class="stat-value" id="dash-total-members">0</span>
+              <span class="stat-label">Total Members</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon gold"><i class="fas fa-calendar-check"></i></div>
+            <div class="stat-info">
+              <span class="stat-value" id="dash-total-sessions">0</span>
+              <span class="stat-label">Total Sessions</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon green"><i class="fas fa-percentage"></i></div>
+            <div class="stat-info">
+              <span class="stat-value" id="dash-avg-attendance">0%</span>
+              <span class="stat-label">Avg. Attendance</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon red"><i class="fas fa-user-check"></i></div>
+            <div class="stat-info">
+              <span class="stat-value" id="dash-present-today">—</span>
+              <span class="stat-label">Last Session Present</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dashboard Grid -->
+        <div class="dashboard-grid">
+          <!-- Recent Sessions -->
+          <div class="card">
+            <div class="card-header">
+              <h2><i class="fas fa-history" style="margin-right:6px; color:var(--primary);"></i> Recent Sessions</h2>
+            </div>
+            <div id="recent-sessions-list">
+              <div class="empty-state">
+                <div class="empty-state-icon"><i class="fas fa-calendar-times"></i></div>
+                <h3>No sessions yet</h3>
+                <p>Take your first attendance to see sessions here</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category Breakdown -->
+          <div class="card">
+            <div class="card-header">
+              <h2><i class="fas fa-chart-pie" style="margin-right:6px; color:var(--accent);"></i> Member Breakdown</h2>
+            </div>
+            <div id="category-breakdown">
+              <div class="category-bar-chart" id="category-chart"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==========================================
+           ATTENDANCE TAB
+           ========================================== -->
+      <section id="attendance-tab" class="tab-content">
+        <div class="section-header">
+          <h1>Take Attendance</h1>
+          <p>Mark attendance for today's event</p>
+          <div class="attendance-meta" style="display:flex; gap:16px; margin-top:16px; flex-wrap:wrap; align-items:flex-end;">
+            <div style="flex: 1; min-width: 140px;">
+              <label style="display:block; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:6px; color:var(--text-secondary);">Event Date</label>
+              <input type="date" id="attendance-date" title="Event Date" style="width:100%; padding:10px 14px;">
+            </div>
+            <div style="flex: 1; min-width: 120px;">
+              <label style="display:block; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:6px; color:var(--text-secondary);">Event Time</label>
+              <input type="time" id="attendance-time" title="Event Time" style="width:100%; padding:10px 14px;">
+            </div>
+            <div style="flex: 2; min-width: 240px;">
+              <label style="display:block; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:6px; color:var(--text-secondary);">Event Name</label>
+              <input type="text" id="event-name" placeholder="Enter event name..." title="Event Name" style="width:100%; padding:10px 14px;">
+            </div>
+          </div>
+        </div>
+
+        <!-- Board Officials Section -->
+        <div class="attendance-category-section" id="board-officials-section">
+          <div class="category-section-header">
+            <h2>
+              <i class="fas fa-user-tie" style="color:var(--primary);"></i>
+              Board Officials
+              <span class="member-count-badge" id="board-count-badge">0</span>
+            </h2>
+            <div class="category-section-actions">
+              <button class="btn btn-sm btn-outline" onclick="markAllStatus('Board Official', 'Present')"><i class="fas fa-check-double"></i> All Present</button>
+              <button class="btn btn-sm btn-outline" onclick="markAllStatus('Board Official', 'Absent')"><i class="fas fa-times"></i> All Absent</button>
+              <button class="btn btn-sm btn-ghost" onclick="clearCategoryAttendance('Board Official')"><i class="fas fa-eraser"></i> Clear</button>
+              <button class="btn btn-sm btn-accent" onclick="openAddMemberModal('Board Official')"><i class="fas fa-plus"></i> Add</button>
+            </div>
+          </div>
+          <div class="attendance-list" id="board-officials-list"></div>
+        </div>
+
+        <!-- Rotaractors Section -->
+        <div class="attendance-category-section" id="rotaractors-section">
+          <div class="category-section-header">
+            <h2>
+              <i class="fas fa-users" style="color:var(--accent);"></i>
+              Rotaractors
+              <span class="member-count-badge" id="rotaractor-count-badge">0</span>
+            </h2>
+            <div class="category-section-actions">
+              <button class="btn btn-sm btn-outline" onclick="markAllStatus('Rotaractor', 'Present')"><i class="fas fa-check-double"></i> All Present</button>
+              <button class="btn btn-sm btn-outline" onclick="markAllStatus('Rotaractor', 'Absent')"><i class="fas fa-times"></i> All Absent</button>
+              <button class="btn btn-sm btn-ghost" onclick="clearCategoryAttendance('Rotaractor')"><i class="fas fa-eraser"></i> Clear</button>
+              <button class="btn btn-sm btn-accent" onclick="openAddMemberModal('Rotaractor')"><i class="fas fa-plus"></i> Add</button>
+            </div>
+          </div>
+          <div class="attendance-list" id="rotaractors-list"></div>
+        </div>
+
+        <!-- Other Rotaractors Section -->
+        <div class="attendance-category-section" id="other-rotaractors-section">
+          <div class="category-section-header">
+            <h2>
+              <i class="fas fa-user-friends" style="color:#6366F1;"></i>
+              Other Rotaractors
+              <span class="member-count-badge" id="other-count-badge">0</span>
+            </h2>
+            <div class="category-section-actions">
+              <button class="btn btn-sm btn-outline" onclick="markAllStatus('Other Rotaractor', 'Present')"><i class="fas fa-check-double"></i> All Present</button>
+              <button class="btn btn-sm btn-outline" onclick="markAllStatus('Other Rotaractor', 'Absent')"><i class="fas fa-times"></i> All Absent</button>
+              <button class="btn btn-sm btn-ghost" onclick="clearCategoryAttendance('Other Rotaractor')"><i class="fas fa-eraser"></i> Clear</button>
+              <button class="btn btn-sm btn-accent" onclick="openAddMemberModal('Other Rotaractor')"><i class="fas fa-plus"></i> Add</button>
+            </div>
+          </div>
+          <div class="attendance-list" id="other-rotaractors-list"></div>
+        </div>
+
+        <!-- Save Bar -->
+        <div class="attendance-save-bar" id="attendance-save-bar">
+          <div class="attendance-summary">
+            <span><i class="fas fa-check-circle" style="color:var(--success);"></i> Present: <strong id="att-present-count">0</strong></span>
+            <span><i class="fas fa-times-circle" style="color:var(--danger);"></i> Absent: <strong id="att-absent-count">0</strong></span>
+            <span><i class="fas fa-clock" style="color:var(--warning);"></i> Late: <strong id="att-late-count">0</strong></span>
+            <span><i class="fas fa-minus-circle" style="color:var(--text-tertiary);"></i> Unmarked: <strong id="att-unmarked-count">0</strong></span>
+          </div>
+          <div class="save-actions">
+            <button class="btn btn-outline" onclick="clearAllAttendance()"><i class="fas fa-eraser"></i> Clear All</button>
+            <button class="btn btn-primary" id="save-attendance-btn" onclick="saveAttendance()"><i class="fas fa-save"></i> Save Attendance</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==========================================
+           MEMBERS TAB
+           ========================================== -->
+      <section id="members-tab" class="tab-content">
+        <div class="section-header">
+          <h1>Members</h1>
+          <p>Manage your club members</p>
+          <div class="section-toolbar">
+            <div class="search-bar">
+              <i class="fas fa-search"></i>
+              <input type="text" id="member-search" placeholder="Search by name, role, department...">
+            </div>
+            <select id="member-category-filter">
+              <option value="all">All Categories</option>
+              <option value="Board Official">Board Officials</option>
+              <option value="Rotaractor">Rotaractors</option>
+              <option value="Other Rotaractor">Other Rotaractors</option>
+            </select>
+            <button class="btn btn-primary" onclick="openAddMemberModal()"><i class="fas fa-plus"></i> Add Member</button>
+          </div>
+        </div>
+
+        <!-- Category Chips -->
+        <div class="category-chips" id="member-category-chips"></div>
+
+        <!-- Members Grid -->
+        <div class="members-grid" id="members-grid"></div>
+      </section>
+
+      <!-- ==========================================
+           REPORTS TAB
+           ========================================== -->
+      <section id="reports-tab" class="tab-content">
+        <div class="section-header">
+          <h1>Reports</h1>
+          <p>View and export attendance reports</p>
+          <div class="section-toolbar reports-toolbar">
+            <div class="search-bar">
+              <i class="fas fa-search"></i>
+              <input type="text" id="report-search" placeholder="Search events...">
+            </div>
+            <input type="date" id="report-date-filter" title="Filter by date" style="max-width:180px;">
+            <select id="report-status-filter" style="max-width:160px;">
+              <option value="all">All Status</option>
+              <option value="Present">Present Only</option>
+              <option value="Absent">Absent Only</option>
+              <option value="Late">Late Only</option>
+            </select>
+            <button class="btn btn-outline btn-sm" onclick="clearReportFilters()"><i class="fas fa-filter-circle-xmark"></i> Clear Filters</button>
+          </div>
+        </div>
+
+        <!-- Session Count Chip -->
+        <div class="category-chips">
+          <div class="chip">
+            <i class="fas fa-calendar-alt"></i> Total Sessions
+            <span class="chip-count" id="report-session-count">0</span>
+          </div>
+        </div>
+
+        <!-- Reports List -->
+        <div class="reports-list" id="reports-list"></div>
+      </section>
+
+      <!-- ==========================================
+           SETTINGS TAB
+           ========================================== -->
+      <section id="settings-tab" class="tab-content">
+        <div class="section-header">
+          <h1>Settings</h1>
+          <p>Customize your experience</p>
+        </div>
+
+        <div class="settings-grid">
+          <!-- Theme Settings -->
+          <div class="settings-card">
+            <h3><i class="fas fa-palette"></i> Appearance</h3>
+            <div class="settings-item">
+              <div>
+                <div class="settings-label">Dark Mode</div>
+                <div class="settings-sublabel">Toggle between light and dark themes</div>
+              </div>
+              <label class="theme-switch">
+                <input type="checkbox" id="theme-switch-input">
+                <span class="theme-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Admin Info -->
+          <div class="settings-card">
+            <h3><i class="fas fa-user-shield"></i> Admin Account</h3>
+            <div class="settings-item">
+              <div>
+                <div class="settings-label">Signed in as</div>
+                <div class="settings-sublabel" id="settings-admin-email">admin@rotaract.club</div>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="handleLogout()"><i class="fas fa-sign-out-alt"></i> Logout</button>
+            </div>
+          </div>
+
+          <!-- Data Info -->
+          <div class="settings-card">
+            <h3><i class="fas fa-database"></i> Data</h3>
+            <div class="settings-item">
+              <div>
+                <div class="settings-label">Members in Database</div>
+                <div class="settings-sublabel" id="settings-member-count">0 members</div>
+              </div>
+            </div>
+            <div class="settings-item">
+              <div>
+                <div class="settings-label">Attendance Sessions</div>
+                <div class="settings-sublabel" id="settings-session-count">0 sessions</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ---- MOBILE BOTTOM NAV ---- -->
+    <div class="mobile-nav" id="mobile-nav">
+      <div class="mobile-nav-inner">
+        <button class="mobile-nav-item active" data-tab="dashboard">
+          <i class="fas fa-th-large"></i>
+          <span>Dashboard</span>
+        </button>
+        <button class="mobile-nav-item" data-tab="attendance">
+          <i class="fas fa-clipboard-check"></i>
+          <span>Attendance</span>
+        </button>
+        <button class="mobile-nav-item" data-tab="members">
+          <i class="fas fa-users"></i>
+          <span>Members</span>
+        </button>
+        <button class="mobile-nav-item" data-tab="reports">
+          <i class="fas fa-chart-bar"></i>
+          <span>Reports</span>
+        </button>
+        <button class="mobile-nav-item" data-tab="settings">
+          <i class="fas fa-sliders-h"></i>
+          <span>Settings</span>
+        </button>
+      </div>
+    </div>
+
+  </div><!-- end #app -->
+
+  <!-- ============================================================
+       MODALS
+       ============================================================ -->
+
+  <!-- Add / Edit Member Modal -->
+  <div id="member-modal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="member-modal-title">Add Member</h2>
+        <button class="modal-close" onclick="hideModal('member-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="member-form">
+          <input type="hidden" id="member-edit-id" value="">
+          <div class="form-group">
+            <label>Full Name <span class="required">*</span></label>
+            <input type="text" id="member-name-input" placeholder="e.g. John Doe" required>
+          </div>
+          <div class="form-group">
+            <label>Category <span class="required">*</span></label>
+            <select id="member-category-input" required>
+              <option value="">Select Category</option>
+              <option value="Board Official">Board Official</option>
+              <option value="Rotaractor">Rotaractor</option>
+              <option value="Other Rotaractor">Other Rotaractor</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Role / Position</label>
+              <input type="text" id="member-role-input" placeholder="e.g. President">
+            </div>
+            <div class="form-group">
+              <label>Department</label>
+              <input type="text" id="member-dept-input" placeholder="e.g. Computer Science">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Year</label>
+              <input type="text" id="member-year-input" placeholder="e.g. 3rd Year">
+            </div>
+            <div class="form-group">
+              <label>Phone</label>
+              <input type="tel" id="member-phone-input" placeholder="e.g. 9876543210">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="member-email-input" placeholder="e.g. john@example.com">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="hideModal('member-modal')">Cancel</button>
+        <button class="btn btn-primary" id="member-save-btn" onclick="saveMember()"><i class="fas fa-save"></i> Save Member</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Dialog Modal -->
+  <div id="confirm-modal" class="modal-overlay">
+    <div class="modal modal-sm">
+      <div class="modal-body" style="padding-top:32px;">
+        <div class="confirm-icon warning" id="confirm-icon">
+          <i class="fas fa-exclamation-triangle"></i>
+        </div>
+        <p class="confirm-message" id="confirm-message">Are you sure?</p>
+        <p class="confirm-sub-message" id="confirm-sub-message">This action cannot be undone.</p>
+      </div>
+      <div class="modal-footer" style="justify-content:center;">
+        <button class="btn btn-outline" id="confirm-cancel-btn" onclick="hideModal('confirm-modal')">Cancel</button>
+        <button class="btn btn-danger" id="confirm-ok-btn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Report Detail Modal -->
+  <div id="report-detail-modal" class="modal-overlay">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2 id="report-detail-title">Session Details</h2>
+        <button class="modal-close" onclick="hideModal('report-detail-modal')">&times;</button>
+      </div>
+      <div class="modal-body" id="report-detail-body">
+        <!-- Dynamically filled -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="detail-export-pdf-btn"><i class="fas fa-file-pdf"></i> Export PDF</button>
+        <button class="btn btn-outline" id="detail-export-excel-btn"><i class="fas fa-file-excel" style="color:var(--success);"></i> Export Excel</button>
+        <button class="btn btn-primary" onclick="hideModal('report-detail-modal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       TOAST CONTAINER
+       ============================================================ -->
+  <div id="toast-container"></div>
+
+  <!-- ============================================================
+       CDN SCRIPTS
+       ============================================================ -->
+  <!-- Firebase (compat for CDN simplicity) -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-auth-compat.js"></script>
+
+  <!-- jsPDF + AutoTable -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+  <!-- SheetJS for Excel -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+  <!-- Firebase Config (user replaces values) -->
+  <script src="firebase-config.js"></script>
+
+  <!-- Main App Logic -->
+  <script src="app.js"></script>
+
+</body>
+</html>
