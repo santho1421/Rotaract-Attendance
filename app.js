@@ -50,6 +50,17 @@ function setDefaultDate() {
 // AUTHENTICATION
 // ============================================================
 function initAuthListener() {
+  if (typeof auth === 'undefined' || !auth) {
+    console.error('Firebase Auth service is not defined. Please check your firebase-config.js configuration.');
+    const preloaderText = $('.preloader-text');
+    if (preloaderText) {
+      preloaderText.innerHTML = '<span style="color:var(--danger); font-weight:600;">Configuration Error: Firebase Auth is not defined.<br>Please set up your GitHub repository Secrets and push code to trigger the build.</span>';
+      // Stop spinner animation to indicate error
+      const spinner = $('.preloader-spinner');
+      if (spinner) spinner.style.borderTopColor = 'var(--danger)';
+    }
+    return;
+  }
   auth.onAuthStateChanged((user) => {
     const preloader = $('#preloader');
     if (user) {
