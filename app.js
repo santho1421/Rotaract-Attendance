@@ -1674,15 +1674,6 @@ async function checkUserRole(user) {
     return null;
   }
   
-  // Link uid if not set
-  if (!roleData.uid) {
-    await docRef.update({
-      uid: user.uid,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    roleData.uid = user.uid;
-  }
-  
   return roleData;
 }
 
