@@ -178,6 +178,9 @@ body {
 }
 
 a { color: var(--text-link); text-decoration: none; }
+
+/* Utility: hidden class */
+.hidden { display: none !important; }
 a:hover { text-decoration: underline; }
 
 img { max-width: 100%; display: block; }
@@ -1130,7 +1133,7 @@ textarea {
 }
 
 .attendance-meta input, .attendance-meta select {
-  max-width: 280px;
+  max-width: 100%;
 }
 
 .attendance-category-section {
