@@ -21,3 +21,12 @@ firebase.initializeApp(firebaseConfig);
 // Initialize services
 const db = firebase.firestore();
 const auth = firebase.auth();
+
+// Configure Firebase Authentication to use Session Persistence
+auth.setPersistence(firebase.auth.Auth.Persistence.SESSION)
+  .then(() => {
+    console.log('🔥 Firebase Auth persistence set to SESSION');
+  })
+  .catch((err) => {
+    console.error('❌ Failed to set Firebase Auth persistence:', err);
+  });
