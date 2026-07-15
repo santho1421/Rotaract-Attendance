@@ -30,6 +30,23 @@ document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
   initAuthListener();
   setDefaultDate();
+
+  // Service type "Other" toggle
+  const serviceSelect = $('#attendance-service');
+  if (serviceSelect) {
+    serviceSelect.addEventListener('change', () => {
+      const wrapper = $('#custom-service-wrapper');
+      if (wrapper) {
+        if (serviceSelect.value === 'Other') {
+          wrapper.classList.remove('hidden');
+          $('#attendance-service-custom')?.focus();
+        } else {
+          wrapper.classList.add('hidden');
+          if ($('#attendance-service-custom')) $('#attendance-service-custom').value = '';
+        }
+      }
+    });
+  }
 });
 
 function setDefaultDate() {
@@ -688,6 +705,12 @@ async function saveAttendance() {
   const date = $('#attendance-date').value;
   const eventTime = $('#attendance-time')?.value || '';
   const eventName = $('#event-name').value.trim();
+  const serviceSelect = $('#attendance-service');
+  let serviceType = serviceSelect?.value || '';
+  if (serviceType === 'Other') {
+    serviceType = ($('#attendance-service-custom')?.value || '').trim();
+  }
+  const venue = ($('#attendance-venue')?.value || '').trim();
 
   // Validation
   if (!date) {
@@ -708,6 +731,18 @@ async function saveAttendance() {
     return;
   }
 
+  if (!serviceType) {
+    showToast('Please select a service / avenue.', 'warning');
+    $('#attendance-service')?.focus();
+    return;
+  }
+
+  if (!venue) {
+    showToast('Please enter the event venue.', 'warning');
+    $('#attendance-venue')?.focus();
+    return;
+  }
+
   if (APP.members.length === 0) {
     showToast('No members to take attendance for. Add members first.', 'warning');
     return;
@@ -719,15 +754,15 @@ async function saveAttendance() {
     showConfirm(
       `${unmarkedMembers.length} member(s) unmarked`,
       'Unmarked members will be recorded as Absent. Continue?',
-      () => doSaveAttendance(date, eventTime, eventName)
+      () => doSaveAttendance(date, eventTime, eventName, serviceType, venue)
     );
     return;
   }
 
-  await doSaveAttendance(date, eventTime, eventName);
+  await doSaveAttendance(date, eventTime, eventName, serviceType, venue);
 }
 
-async function doSaveAttendance(date, eventTime, eventName) {
+async function doSaveAttendance(date, eventTime, eventName, serviceType, venue) {
   const btn = $('#save-attendance-btn');
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
@@ -757,6 +792,8 @@ async function doSaveAttendance(date, eventTime, eventName) {
       eventName,
       date,
       eventTime,
+      serviceType: serviceType || '',
+      venue: venue || '',
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       createdBy: auth.currentUser?.email || 'unknown',
       totalMembers,
@@ -774,6 +811,10 @@ async function doSaveAttendance(date, eventTime, eventName) {
     // Reset
     APP.attendance = {};
     $('#event-name').value = '';
+    if ($('#attendance-service')) $('#attendance-service').value = '';
+    if ($('#attendance-service-custom')) $('#attendance-service-custom').value = '';
+    if ($('#custom-service-wrapper')) $('#custom-service-wrapper').classList.add('hidden');
+    if ($('#attendance-venue')) $('#attendance-venue').value = '';
     setDefaultDate();
 
     // Refresh
@@ -852,7 +893,9 @@ function renderReportsList() {
         <div class="report-info">
           <div class="report-event-name">${escapeHtml(s.eventName || 'Untitled Event')}</div>
           <div class="report-meta">
+            ${s.serviceType ? `<span><i class="fas fa-hands-helping"></i> ${escapeHtml(s.serviceType)}</span>` : ''}
             <span><i class="fas fa-calendar"></i> ${s.date || 'N/A'}</span>
+            ${s.venue ? `<span><i class="fas fa-map-marker-alt"></i> ${escapeHtml(s.venue)}</span>` : ''}
             <span><i class="fas fa-users"></i> ${s.totalMembers || 0} members</span>
             <span><i class="fas fa-check"></i> ${s.totalPresent || 0} present</span>
             <span><i class="fas fa-percentage"></i> ${rate}%</span>
@@ -889,9 +932,11 @@ function showReportDetail(sessionId) {
 
   let html = `
     <div class="report-detail-header" style="text-align:left; padding-bottom:16px; border-bottom:1px solid var(--border); margin-bottom:16px;">
-      <p style="margin:4px 0; font-size:1rem; color:var(--text-primary);"><strong>Event Name:</strong> ${escapeHtml(session.eventName)}</p>
-      <p style="margin:4px 0; font-size:1rem; color:var(--text-primary);"><strong>Event Date:</strong> ${session.date || 'N/A'}</p>
-      <p style="margin:4px 0; font-size:1rem; color:var(--text-primary);"><strong>Event Time:</strong> ${formatTime12Hour(session.eventTime)}</p>
+      ${session.serviceType ? `<p style="margin:4px 0; font-size:1.1rem; color:var(--accent); font-weight:700; text-transform:uppercase;"><i class="fas fa-hands-helping" style="margin-right:6px;"></i>${escapeHtml(session.serviceType)}</p>` : ''}
+      <p style="margin:4px 0; font-size:1rem; color:var(--text-primary);"><strong>Project Name:</strong> ${escapeHtml(session.eventName)}</p>
+      ${session.venue ? `<p style="margin:4px 0; font-size:1rem; color:var(--text-primary);"><strong>Venue:</strong> ${escapeHtml(session.venue)}</p>` : ''}
+      <p style="margin:4px 0; font-size:1rem; color:var(--text-primary);"><strong>Date:</strong> ${session.date || 'N/A'}</p>
+      <p style="margin:4px 0; font-size:1rem; color:var(--text-primary);"><strong>Time:</strong> ${formatTime12Hour(session.eventTime)}</p>
     </div>
 
     <div class="report-summary-cards" style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom: 20px;">
@@ -1154,119 +1199,189 @@ function exportSessionPDF(sessionId) {
   }
 
   try {
-    // jsPDF UMD exposes different globals depending on version/environment
     const jsPDFClass = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
     if (!jsPDFClass) {
       showToast('PDF library not loaded. Check your internet connection and refresh.', 'error');
       return;
     }
-    const doc = new jsPDFClass();
+    const doc = new jsPDFClass({ unit: 'mm', format: 'a4' });
     const records = session.records || [];
+    const pageW = 210;
+    const pageH = 297;
+    const margin = 10;
+    const innerW = pageW - margin * 2;
 
-    // Colors
-    const primaryColor = [26, 58, 107];   // #1A3A6B
-    const accentColor = [212, 168, 67];    // #D4A843
-    const white = [255, 255, 255];
-
-    // Header bar
-    doc.setFillColor(...primaryColor);
-    doc.rect(0, 0, 210, 35, 'F');
-
-    doc.setTextColor(...white);
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('ROTARACT CLUB OF PSVPEC', 14, 16);
-
-    // Place logo in top right corner of the banner
-    const logoImg = $('.nav-brand-icon img');
-    if (logoImg) {
-      try {
-        doc.addImage(logoImg, 'PNG', 176, 7.5, 20, 20);
-      } catch (e) {
-        console.warn('Could not add logo to PDF:', e);
-      }
+    // ---- Helper: format date as DD/MM/YYYY ----
+    function formatDateDMY(dateStr) {
+      if (!dateStr) return 'N/A';
+      const parts = dateStr.split('-');
+      if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      return dateStr;
     }
 
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Attendance Report', 14, 24);
+    // ---- Helper: format time range style ----
+    function formatTimeRange(timeStr) {
+      if (!timeStr) return 'N/A';
+      return formatTime12Hour(timeStr);
+    }
 
-    // Gold accent bar
-    doc.setFillColor(...accentColor);
-    doc.rect(0, 35, 210, 2, 'F');
-
-    // Event info
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Event Name: ${session.eventName || 'Untitled Event'}`, 14, 48);
-    doc.text(`Event Date : ${session.date || 'N/A'}`, 14, 54);
-    doc.text(`Event Time : ${formatTime12Hour(session.eventTime)}`, 14, 60);
-
-    // Summary box
-    const summaryY = 66;
-    doc.setFillColor(240, 242, 245);
-    doc.rect(14, summaryY, 182, 12, 'F');
-
-    doc.setFontSize(9);
-    doc.setTextColor(0, 0, 0);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Total Attendees: ${session.totalPresent || 0}`, 20, summaryY + 8);
-
-    let currentY = summaryY + 20;
-
-    // Filter and sort all present records alphabetically
+    // ---- Get present records sorted alphabetically ----
     const presentRecords = records
       .filter(r => r.status === 'Present')
       .sort((a, b) => (a.memberName || '').localeCompare(b.memberName || ''));
 
-    if (presentRecords.length > 0) {
-      const tableData = presentRecords.map((r, i) => [
-        i + 1,
-        r.memberName || '',
-        'Present'
-      ]);
+    // ---- Draw page border (thick black) ----
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(1.5);
+    doc.rect(margin, margin, innerW, pageH - margin * 2);
 
-      doc.autoTable({
-        startY: currentY,
-        head: [['#', 'Name', 'Status']],
-        body: tableData,
-        theme: 'grid',
-        styles: {
-          fontSize: 8.5,
-          cellPadding: 3,
-          lineColor: [200, 200, 200],
-          lineWidth: 0.3,
-        },
-        headStyles: {
-          fillColor: primaryColor,
-          textColor: white,
-          fontStyle: 'bold',
-          fontSize: 8.5,
-        },
-        alternateRowStyles: {
-          fillColor: [248, 250, 252],
-        },
-        columnStyles: {
-          0: { cellWidth: 15 },
-          2: { cellWidth: 25 },
-        },
-        margin: { left: 14, right: 14 },
-      });
-
-      currentY = doc.lastAutoTable.finalY + 10;
+    // ---- Watermark logo (transparent, centered) ----
+    const logoImg = $('.nav-brand-icon img');
+    if (logoImg) {
+      try {
+        const watermarkSize = 90;
+        const wx = (pageW - watermarkSize) / 2;
+        // Position watermark roughly in the middle of the attendee list area
+        const wy = 95;
+        // Save current graphics state
+        const gState = doc.GState({ opacity: 0.08 });
+        doc.saveGraphicsState();
+        doc.setGState(gState);
+        doc.addImage(logoImg, 'PNG', wx, wy, watermarkSize, watermarkSize);
+        doc.restoreGraphicsState();
+      } catch (e) {
+        console.warn('Could not add watermark logo to PDF:', e);
+      }
     }
 
-    // Footer
-    const pageCount = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      doc.text(`ROTARACT CLUB OF PSVPEC Attendance Report — Page ${i} of ${pageCount}`, 14, 290);
+    // ---- Top thick bar ----
+    doc.setFillColor(0, 0, 0);
+    doc.rect(margin, margin, innerW, 6, 'F');
+
+    // ---- Service Type Title (centered, bold) ----
+    let currentY = margin + 20;
+    const serviceTitle = session.serviceType || 'Attendance Report';
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    doc.text(serviceTitle, pageW / 2, currentY, { align: 'center' });
+
+    // ---- Underline below title ----
+    currentY += 3;
+    const titleWidth = doc.getTextWidth(serviceTitle);
+    doc.setLineWidth(0.5);
+    doc.line((pageW - titleWidth) / 2, currentY, (pageW + titleWidth) / 2, currentY);
+
+    currentY += 10;
+
+    // ---- Two-column metadata ----
+    const leftX = margin + 8;
+    const rightX = pageW / 2 + 5;
+    const lineH = 7;
+
+    doc.setFontSize(10);
+
+    // Row 1: Project Name / Venue
+    doc.setFont('helvetica', 'bold');
+    doc.text('Project Name: - ', leftX, currentY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(session.eventName || 'Untitled Event', leftX + doc.getTextWidth('Project Name: - '), currentY);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Venue: - ', rightX, currentY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(session.venue || 'N/A', rightX + doc.getTextWidth('Venue: - '), currentY);
+
+    currentY += lineH;
+
+    // Row 2: Date / Time
+    doc.setFont('helvetica', 'bold');
+    doc.text('Date: - ', leftX, currentY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(formatDateDMY(session.date), leftX + doc.getTextWidth('Date: - '), currentY);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Time: - ', rightX, currentY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(formatTimeRange(session.eventTime), rightX + doc.getTextWidth('Time: - '), currentY);
+
+    currentY += lineH;
+
+    // Row 3: Total Attendees
+    doc.setFont('helvetica', 'bold');
+    doc.text('Total Attendees: - ', leftX, currentY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(String(presentRecords.length), leftX + doc.getTextWidth('Total Attendees: - '), currentY);
+
+    currentY += lineH + 2;
+
+    // ---- Attendee numbered list with "Rtr." prefix ----
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+
+    presentRecords.forEach((r, i) => {
+      const num = i + 1;
+      const name = r.memberName || '';
+      // Add designation prefix based on role
+      let prefix = 'Rtr. ';
+      if (r.role) {
+        const roleLower = r.role.toLowerCase();
+        if (roleLower.includes('ipp')) prefix = 'Rtr. IPP. ';
+        else if (roleLower.includes('president')) prefix = 'Rtr. ';
+      }
+      const line = `${num}. ${prefix}${name}`;
+
+      // Check if we need a new page
+      if (currentY > pageH - margin - 15) {
+        // Bottom bar before new page
+        doc.setFillColor(0, 0, 0);
+        doc.rect(margin, pageH - margin - 6, innerW, 6, 'F');
+
+        doc.addPage();
+        // Draw border on new page
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(1.5);
+        doc.rect(margin, margin, innerW, pageH - margin * 2);
+        // Top bar on new page
+        doc.setFillColor(0, 0, 0);
+        doc.rect(margin, margin, innerW, 6, 'F');
+
+        // Watermark on new page
+        if (logoImg) {
+          try {
+            const watermarkSize = 90;
+            const wx = (pageW - watermarkSize) / 2;
+            const wy = 80;
+            const gState = doc.GState({ opacity: 0.08 });
+            doc.saveGraphicsState();
+            doc.setGState(gState);
+            doc.addImage(logoImg, 'PNG', wx, wy, watermarkSize, watermarkSize);
+            doc.restoreGraphicsState();
+          } catch (e) {
+            console.warn('Watermark error on new page:', e);
+          }
+        }
+
+        currentY = margin + 18;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.setTextColor(0, 0, 0);
+      }
+
+      doc.text(line, leftX, currentY);
+      currentY += 6;
+    });
+
+    // ---- Bottom thick bar on every page ----
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let p = 1; p <= totalPages; p++) {
+      doc.setPage(p);
+      doc.setFillColor(0, 0, 0);
+      doc.rect(margin, pageH - margin - 6, innerW, 6, 'F');
     }
 
-    const filename = `ROTARACT_PSVPEC_Attendance_${session.eventName?.replace(/[^a-zA-Z0-9]/g, '_') || 'Report'}_${session.date || 'undated'}.pdf`;
+    const filename = `ROTARACT_PSVPEC_${(session.serviceType || 'Attendance').replace(/[^a-zA-Z0-9]/g, '_')}_${session.eventName?.replace(/[^a-zA-Z0-9]/g, '_') || 'Report'}_${session.date || 'undated'}.pdf`;
     doc.save(filename);
 
     showToast('PDF exported successfully!', 'success');
@@ -1302,7 +1417,9 @@ function exportSessionExcel(sessionId) {
       ['Official Attendance Report'],
       [],
       ['EVENT METADATA'],
-      ['Event Name:', session.eventName || 'Untitled Event'],
+      ['Service / Avenue:', session.serviceType || 'N/A'],
+      ['Project Name:', session.eventName || 'Untitled Event'],
+      ['Venue:', session.venue || 'N/A'],
       ['Event Date:', session.date || 'N/A'],
       ['Event Time:', formatTime12Hour(session.eventTime)],
       ['Total Attendees:', session.totalPresent || 0],
@@ -1323,17 +1440,17 @@ function exportSessionExcel(sessionId) {
 
     // Apply column widths for organized layout and prevent truncation
     sheet['!cols'] = [
-      { wch: 18 },  // Column A: 'Total Attendees:', 'Event Name:', '#'
-      { wch: 35 },  // Column B: Name values, 'Name' header
-      { wch: 15 }   // Column C: 'Status' value, 'Status' header
+      { wch: 20 },  // Column A: labels
+      { wch: 35 },  // Column B: values / Name
+      { wch: 15 }   // Column C: Status
     ];
 
     // Merge titles for professional layout
     sheet['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }, // ROTARACT CLUB OF PSVPEC (A1:C1)
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } }, // Official Attendance Report (A2:C2)
-      { s: { r: 3, c: 0 }, e: { r: 3, c: 2 } }, // EVENT METADATA (A4:C4)
-      { s: { r: 9, c: 0 }, e: { r: 9, c: 2 } }  // ATTENDANCE SHEET (A10:C10)
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },  // ROTARACT CLUB OF PSVPEC
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } },  // Official Attendance Report
+      { s: { r: 3, c: 0 }, e: { r: 3, c: 2 } },  // EVENT METADATA
+      { s: { r: 11, c: 0 }, e: { r: 11, c: 2 } }  // ATTENDANCE SHEET
     ];
 
     XLSX.utils.book_append_sheet(wb, sheet, 'Attendance');

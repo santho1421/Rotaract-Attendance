@@ -196,8 +196,31 @@
               <input type="time" id="attendance-time" title="Event Time" style="width:100%; padding:10px 14px;">
             </div>
             <div style="flex: 2; min-width: 240px;">
-              <label style="display:block; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:6px; color:var(--text-secondary);">Event Name</label>
-              <input type="text" id="event-name" placeholder="Enter event name..." title="Event Name" style="width:100%; padding:10px 14px;">
+              <label style="display:block; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:6px; color:var(--text-secondary);">Project Name / Event Name</label>
+              <input type="text" id="event-name" placeholder="Enter project / event name..." title="Event Name" style="width:100%; padding:10px 14px;">
+            </div>
+          </div>
+          <div class="attendance-meta" style="display:flex; gap:16px; margin-top:12px; flex-wrap:wrap; align-items:flex-end;">
+            <div style="flex: 1; min-width: 200px;">
+              <label style="display:block; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:6px; color:var(--text-secondary);">Service / Avenue</label>
+              <select id="attendance-service" style="width:100%; padding:10px 14px;">
+                <option value="">Select Service</option>
+                <option value="Club Service">Club Service</option>
+                <option value="Professional Service">Professional Service</option>
+                <option value="International Service">International Service</option>
+                <option value="Community Service">Community Service</option>
+                <option value="Blood Donation">Blood Donation</option>
+                <option value="Empowerment">Empowerment</option>
+                <option value="Other">Other (Type below)</option>
+              </select>
+            </div>
+            <div style="flex: 1; min-width: 200px;" id="custom-service-wrapper" class="hidden">
+              <label style="display:block; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:6px; color:var(--text-secondary);">Custom Service Name</label>
+              <input type="text" id="attendance-service-custom" placeholder="Enter custom service name..." style="width:100%; padding:10px 14px;">
+            </div>
+            <div style="flex: 2; min-width: 240px;">
+              <label style="display:block; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:6px; color:var(--text-secondary);">Venue</label>
+              <input type="text" id="attendance-venue" placeholder="Enter event venue..." title="Event Venue" style="width:100%; padding:10px 14px;">
             </div>
           </div>
         </div>
