@@ -57,6 +57,23 @@
   </div>
 
   <!-- ============================================================
+       BLOCKED SCREEN (Restricted Access)
+       ============================================================ -->
+  <div id="blocked-screen" class="hidden" style="display:flex; align-items:center; justify-content:center; min-height:100vh; background:var(--bg-body); padding:20px;">
+    <div class="login-card" style="text-align:center; max-width:400px; width:100%;">
+      <div class="login-logo" style="background:none; border-radius:0; box-shadow:none; height:auto; width:auto; margin-bottom:16px;">
+        <img src="images/racpsvpec_logo.png" alt="ROTARACT CLUB OF PSVPEC Logo" style="max-height:100px; margin:0 auto; object-fit:contain;">
+      </div>
+      <h2 style="font-size:1.3rem; margin-bottom:8px; color:var(--danger);"><i class="fas fa-ban" style="margin-right:8px;"></i>Access Restricted</h2>
+      <p id="blocked-message" style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:20px; line-height:1.5;">Your account is not assigned a role or has been deactivated. Please contact the administrator (Sergeant) to request access.</p>
+      <div style="background:var(--bg-secondary); padding:10px 14px; border-radius:var(--radius-md); font-size:0.85rem; color:var(--text-primary); margin-bottom:20px; word-break:break-all;">
+        Logged in as: <strong id="blocked-user-email">email@domain.com</strong>
+      </div>
+      <button class="btn btn-primary" onclick="handleBlockedLogout()" style="width:100%;"><i class="fas fa-sign-out-alt" style="margin-right:6px;"></i>Sign Out</button>
+    </div>
+  </div>
+
+  <!-- ============================================================
        MAIN APPLICATION
        ============================================================ -->
   <div id="app" class="hidden">
@@ -66,6 +83,7 @@
       <div class="nav-brand" onclick="switchTab('dashboard')">
         <div class="nav-brand-icon" style="background:none; display:flex; align-items:center; justify-content:center; width:40px; height:40px;">
           <img src="images/racpsvpec_logo.png" alt="Logo" style="max-height:100%; max-width:100%; object-fit:contain;">
+          <img id="pdf-bg-logo" src="images/pdf_bg.png" alt="PDF Background Logo" style="display:none;">
         </div>
         <span style="font-size:0.95rem; font-weight:800; letter-spacing:0.02em;">ROTARACT CLUB OF PSVPEC</span>
       </div>
@@ -94,9 +112,9 @@
       </div>
 
       <div class="nav-actions">
-        <span class="nav-admin-badge" id="admin-badge">
-          <i class="fas fa-shield-alt"></i>
-          <span id="admin-email-display">Admin</span>
+        <span class="nav-admin-badge" id="user-role-badge" style="display:inline-flex; align-items:center; gap:6px;">
+          <i class="fas fa-user-shield" id="user-role-icon"></i>
+          <span id="user-role-display">Role</span>
         </span>
         <button class="nav-action-btn" id="theme-toggle-btn" title="Toggle Theme">
           <i class="fas fa-moon" id="theme-icon"></i>
@@ -411,6 +429,36 @@
               </div>
             </div>
           </div>
+
+          <!-- Access Control (Admin Only) -->
+          <div class="settings-card hidden" id="settings-access-control-card" style="grid-column: 1 / -1;">
+            <h3><i class="fas fa-users-cog"></i> Access Control</h3>
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:16px;">Manage user access roles and permissions (Sergeant = Admin, President & Secretary = Viewer).</p>
+            
+            <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:center;">
+              <div style="flex:1; min-width:200px; position:relative;">
+                <input type="text" id="role-search" placeholder="Search users by email..." style="width:100%; padding:8px 12px; font-size:0.85rem;" oninput="renderUserRoles()">
+              </div>
+              <button class="btn btn-primary" onclick="openAddRoleModal()"><i class="fas fa-user-plus" style="margin-right:6px;"></i>Add User Role</button>
+            </div>
+
+            <div class="table-container" style="border:1px solid var(--border); border-radius:var(--radius-md); max-height:350px; overflow-y:auto;">
+              <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                <thead>
+                  <tr style="background:var(--bg-secondary); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:1;">
+                    <th style="padding:12px 10px; text-align:left;">Email</th>
+                    <th style="padding:12px 10px; text-align:left;">Club Position</th>
+                    <th style="padding:12px 10px; text-align:left;">Access Mode</th>
+                    <th style="padding:12px 10px; text-align:left;">Status</th>
+                    <th style="padding:12px 10px; text-align:right; width:180px;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="role-users-list">
+                  <!-- Rendered dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -535,6 +583,49 @@
         <button class="btn btn-outline" id="detail-export-pdf-btn"><i class="fas fa-file-pdf"></i> Export PDF</button>
         <button class="btn btn-outline" id="detail-export-excel-btn"><i class="fas fa-file-excel" style="color:var(--success);"></i> Export Excel</button>
         <button class="btn btn-primary" onclick="hideModal('report-detail-modal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add / Edit User Role Modal -->
+  <div id="role-modal" class="modal-overlay">
+    <div class="modal" style="max-width:450px;">
+      <div class="modal-header">
+        <h2 id="role-modal-title">Add User Access</h2>
+        <button class="modal-close" onclick="hideModal('role-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="role-form" onsubmit="saveUserRole(event)">
+          <input type="hidden" id="role-edit-id" value="">
+          <div class="form-group">
+            <label>User Email <span class="required">*</span></label>
+            <input type="email" id="role-email" placeholder="user@rotaract.club" required>
+          </div>
+          <div class="form-group">
+            <label>Club Position <span class="required">*</span></label>
+            <select id="role-position" required onchange="autoAssignAccessMode()">
+              <option value="">Select Position</option>
+              <option value="President">President (Viewer)</option>
+              <option value="Secretary">Secretary (Viewer)</option>
+              <option value="Sergeant">Sergeant (Admin)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Access Mode</label>
+            <input type="text" id="role-mode" readonly value="viewer" style="background:var(--bg-secondary); cursor:not-allowed; opacity:0.8;">
+          </div>
+          <div class="form-group">
+            <label>Status <span class="required">*</span></label>
+            <select id="role-active" required>
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer" style="padding-top:16px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:12px; margin-top:20px;">
+        <button class="btn btn-outline" onclick="hideModal('role-modal')">Cancel</button>
+        <button class="btn btn-primary" id="save-role-btn" onclick="document.getElementById('role-form').requestSubmit()"><i class="fas fa-save"></i> Save Access</button>
       </div>
     </div>
   </div>

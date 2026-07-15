@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper to fetch user's role document by email
+    function getRole(email) {
+      return get(/databases/$(database)/documents/userRoles/$(email)).data;
+    }
+    
+    // Helper to verify if user has active admin privileges
+    function isActiveAdmin(email) {
+      return getRole(email).active == true && getRole(email).accessMode == 'admin';
+    }
+
+    // Role-based document access matching
+    match /userRoles/{email} {
+      // Users can read their own role document if authenticated
+      allow read: if request.auth != null && request.auth.token.email.toLowerCase() == email.toLowerCase();
+      // Only active admins can write, update, or delete role mappings
+      allow write: if request.auth != null && isActiveAdmin(request.auth.token.email);
+    }
+    
+    match /members/{memberId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && isActiveAdmin(request.auth.token.email);
+    }
+    
+    match /sessions/{sessionId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && isActiveAdmin(request.auth.token.email);
+    }
+  }
+}
