@@ -14,6 +14,9 @@ const APP = {
   editingMemberId: null,
   currentReportSession: null,
   confirmCallback: null,
+  userRole: null,       // Loaded role for the current logged-in user
+  userRoles: [],        // List of all user roles for admin display
+  editingUserRoleEmail: null
 };
 
 // ============================================================
@@ -78,20 +81,66 @@ function initAuthListener() {
     }
     return;
   }
-  auth.onAuthStateChanged((user) => {
+  auth.onAuthStateChanged(async (user) => {
     const preloader = $('#preloader');
+    const preloaderText = $('.preloader-text');
     if (user) {
-      // User is signed in
-      $('#login-screen').classList.add('hidden');
-      $('#app').classList.remove('hidden');
-      $('#admin-email-display').textContent = user.email.split('@')[0];
-      $('#settings-admin-email').textContent = user.email;
-      loadAppData();
+      if (preloaderText) preloaderText.textContent = 'Verifying access credentials...';
+      try {
+        const roleData = await checkUserRole(user);
+        if (roleData) {
+          APP.userRole = roleData;
+          
+          // Render badge
+          const roleDisplay = $('#user-role-display');
+          const roleIcon = $('#user-role-icon');
+          const roleBadge = $('#user-role-badge');
+          
+          if (roleDisplay) roleDisplay.textContent = `${roleData.clubPosition}`;
+          if (roleBadge) {
+            if (roleData.accessMode === 'admin') {
+              roleBadge.style.background = 'var(--accent-bg)';
+              roleBadge.style.color = 'var(--accent-dark)';
+              roleBadge.style.border = '1px solid var(--accent)';
+              if (roleIcon) roleIcon.className = 'fas fa-user-shield';
+            } else {
+              roleBadge.style.background = 'rgba(100, 100, 100, 0.08)';
+              roleBadge.style.color = 'var(--text-secondary)';
+              roleBadge.style.border = '1px solid var(--border)';
+              if (roleIcon) roleIcon.className = 'fas fa-user-tie';
+            }
+          }
+
+          // Enforce navigation views
+          applyAccessControlRules();
+
+          // Transition screen
+          $('#login-screen').classList.add('hidden');
+          $('#blocked-screen').classList.add('hidden');
+          $('#app').classList.remove('hidden');
+          $('#settings-admin-email').textContent = user.email;
+          
+          await loadAppData();
+        } else {
+          // Unassigned or Inactive
+          $('#login-screen').classList.add('hidden');
+          $('#app').classList.add('hidden');
+          $('#blocked-screen').classList.remove('hidden');
+          $('#blocked-user-email').textContent = user.email;
+        }
+      } catch (err) {
+        console.error('Error verifying user role:', err);
+        showToast('Failed to verify access role.', 'error');
+        await auth.signOut();
+      }
     } else {
       // User is signed out
       $('#login-screen').classList.remove('hidden');
       $('#app').classList.add('hidden');
+      $('#blocked-screen').classList.add('hidden');
+      APP.userRole = null;
     }
+    
     // Hide preloader
     setTimeout(() => {
       if (preloader) {
@@ -155,12 +204,19 @@ async function handleLogout() {
 // ============================================================
 async function loadAppData() {
   try {
-    await Promise.all([fetchMembers(), fetchSessions()]);
+    const promises = [fetchMembers(), fetchSessions()];
+    if (APP.userRole && APP.userRole.accessMode === 'admin') {
+      promises.push(fetchUserRoles());
+    }
+    await Promise.all(promises);
     renderDashboard();
     renderAttendanceLists();
     renderMembersList();
     renderReportsList();
     updateSettingsCounts();
+    if (APP.userRole && APP.userRole.accessMode === 'admin') {
+      renderUserRoles();
+    }
   } catch (err) {
     console.error('Error loading data:', err);
     showToast('Failed to load data. Check your connection.', 'error');
@@ -235,6 +291,12 @@ function initNavigation() {
 }
 
 function switchTab(tabName) {
+  const mode = APP.userRole ? APP.userRole.accessMode : 'viewer';
+  if (mode !== 'admin' && ['attendance', 'members', 'settings'].includes(tabName)) {
+    showToast('Access Denied: You do not have permission to view this section.', 'warning');
+    return;
+  }
+
   APP.currentTab = tabName;
 
   // Update tab buttons
@@ -907,7 +969,7 @@ function renderReportsList() {
         <div class="report-actions" onclick="event.stopPropagation();">
           <button class="btn-icon" onclick="exportSessionPDF('${s.id}')" title="Export PDF"><i class="fas fa-file-pdf"></i></button>
           <button class="btn-icon" onclick="exportSessionExcel('${s.id}')" title="Export Excel"><i class="fas fa-file-excel"></i></button>
-          <button class="btn-icon danger" onclick="deleteSession('${s.id}')" title="Delete"><i class="fas fa-trash-alt"></i></button>
+          ${APP.userRole && APP.userRole.accessMode === 'admin' ? `<button class="btn-icon danger" onclick="deleteSession('${s.id}')" title="Delete"><i class="fas fa-trash-alt"></i></button>` : ''}
         </div>
       </div>`;
   }).join('');
@@ -1056,6 +1118,10 @@ function showReportDetail(sessionId) {
 }
 
 function deleteSession(sessionId) {
+  if (!APP.userRole || APP.userRole.accessMode !== 'admin') {
+    showToast('Permission Denied: Only Admins can delete sessions.', 'error');
+    return;
+  }
   const session = APP.sessions.find(s => s.id === sessionId);
   if (!session) return;
 
@@ -1198,6 +1264,37 @@ function exportSessionPDF(sessionId) {
     return;
   }
 
+  // ---- 1. VALIDATION ----
+  const eventName = (session.eventName || '').trim();
+  const venue = (session.venue || '').trim();
+  const date = (session.date || '').trim();
+  const time = (session.eventTime || '').trim();
+  
+  const attendees = (session.records || [])
+    .filter(r => r.status === 'Present' || r.status === 'Late')
+    .sort((a, b) => (a.memberName || '').localeCompare(b.memberName || ''));
+
+  if (!eventName) {
+    showToast('PDF Generation Failed: Event Name is missing.', 'error');
+    return;
+  }
+  if (!venue) {
+    showToast('PDF Generation Failed: Venue is missing.', 'error');
+    return;
+  }
+  if (!date) {
+    showToast('PDF Generation Failed: Date is missing.', 'error');
+    return;
+  }
+  if (!time) {
+    showToast('PDF Generation Failed: Time is missing.', 'error');
+    return;
+  }
+  if (attendees.length === 0) {
+    showToast('PDF Generation Failed: Attendance list is empty (no members marked Present or Late).', 'error');
+    return;
+  }
+
   try {
     const jsPDFClass = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
     if (!jsPDFClass) {
@@ -1205,11 +1302,9 @@ function exportSessionPDF(sessionId) {
       return;
     }
     const doc = new jsPDFClass({ unit: 'mm', format: 'a4' });
-    const records = session.records || [];
     const pageW = 210;
     const pageH = 297;
-    const margin = 10;
-    const innerW = pageW - margin * 2;
+    const margin = 14;
 
     // ---- Helper: format date as DD/MM/YYYY ----
     function formatDateDMY(dateStr) {
@@ -1225,160 +1320,159 @@ function exportSessionPDF(sessionId) {
       return formatTime12Hour(timeStr);
     }
 
-    // ---- Get present records sorted alphabetically ----
-    const presentRecords = records
-      .filter(r => r.status === 'Present')
-      .sort((a, b) => (a.memberName || '').localeCompare(b.memberName || ''));
+    // ---- Setup branding & report title ----
+    const bgLogo = $('#pdf-bg-logo') || $('.nav-brand-icon img');
+    const reportTitle = (session.serviceType || 'Attendance Report').toUpperCase();
 
-    // ---- Draw page border (thick black) ----
-    doc.setDrawColor(0, 0, 0);
-    doc.setLineWidth(1.5);
-    doc.rect(margin, margin, innerW, pageH - margin * 2);
-
-    // ---- Watermark logo (transparent, centered) ----
-    const logoImg = $('.nav-brand-icon img');
-    if (logoImg) {
-      try {
-        const watermarkSize = 90;
-        const wx = (pageW - watermarkSize) / 2;
-        // Position watermark roughly in the middle of the attendee list area
-        const wy = 95;
-        // Save current graphics state
-        const gState = doc.GState({ opacity: 0.08 });
-        doc.saveGraphicsState();
-        doc.setGState(gState);
-        doc.addImage(logoImg, 'PNG', wx, wy, watermarkSize, watermarkSize);
-        doc.restoreGraphicsState();
-      } catch (e) {
-        console.warn('Could not add watermark logo to PDF:', e);
+    // ---- Reusable template drawer for multi-page support ----
+    function drawPageTemplate() {
+      // A. Center Watermark Logo (Render at professional 16% opacity for optimal text overlay contrast)
+      if (bgLogo) {
+        try {
+          const watermarkSize = 110;
+          const wx = (pageW - watermarkSize) / 2;
+          const wy = (pageH - watermarkSize) / 2 + 10;
+          const gState = doc.GState({ opacity: 0.16 });
+          doc.saveGraphicsState();
+          doc.setGState(gState);
+          doc.addImage(bgLogo, 'PNG', wx, wy, watermarkSize, watermarkSize);
+          doc.restoreGraphicsState();
+        } catch (e) {
+          console.warn('Watermark decoration failed:', e);
+        }
       }
+
+      // B. Double Page Borders
+      // Outer Charcoal Border
+      doc.setDrawColor(17, 17, 17);
+      doc.setLineWidth(0.4);
+      doc.rect(8, 8, pageW - 16, pageH - 16);
+
+      // Inner Gold Accent Border
+      doc.setDrawColor(212, 175, 55);
+      doc.setLineWidth(0.2);
+      doc.rect(9.5, 9.5, pageW - 19, pageH - 19);
+
+      // C. Header Logo
+      if (bgLogo) {
+        try {
+          doc.addImage(bgLogo, 'PNG', (pageW - 14) / 2, 13, 14, 14);
+        } catch (e) {
+          console.warn('Header logo failed:', e);
+        }
+      }
+
+      // D. Header Typography (Using formal Times Roman)
+      let headY = 32;
+      doc.setFont('times', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(80, 80, 80);
+      doc.text('ROTARACT CLUB OF', pageW / 2, headY, { align: 'center' });
+
+      headY += 5;
+      doc.setFont('times', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(17, 17, 17);
+      doc.text('PRINCE SHRI VENKATESHWARA PADMAVATHY ENGINEERING COLLEGE', pageW / 2, headY, { align: 'center' });
+
+      headY += 4.5;
+      doc.setFont('times', 'italic');
+      doc.setFontSize(9);
+      doc.setTextColor(100, 100, 100);
+      doc.text('Sponsored by RC Chennai Velachery', pageW / 2, headY, { align: 'center' });
+
+      headY += 4;
+      doc.setFont('times', 'normal');
+      doc.text('RI District 3233', pageW / 2, headY, { align: 'center' });
+
+      // Gold Divider Line
+      headY += 4;
+      doc.setDrawColor(212, 175, 55);
+      doc.setLineWidth(0.3);
+      doc.line(14, headY, pageW - 14, headY);
+
+      // E. Centered Category Title
+      headY += 8;
+      doc.setFont('times', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(17, 17, 17);
+      doc.text(reportTitle, pageW / 2, headY, { align: 'center' });
+
+      // Title Underline
+      headY += 1.5;
+      const titleW = doc.getTextWidth(reportTitle);
+      doc.setDrawColor(17, 17, 17);
+      doc.setLineWidth(0.3);
+      doc.line((pageW - titleW) / 2, headY, (pageW + titleW) / 2, headY);
+
+      return headY + 8;
     }
 
-    // ---- Top thick bar ----
-    doc.setFillColor(0, 0, 0);
-    doc.rect(margin, margin, innerW, 6, 'F');
+    // ==========================================
+    // DRAW PAGE 1 METADATA
+    // ==========================================
+    let currentY = drawPageTemplate();
 
-    // ---- Service Type Title (centered, bold) ----
-    let currentY = margin + 20;
-    const serviceTitle = session.serviceType || 'Attendance Report';
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.setTextColor(0, 0, 0);
-    doc.text(serviceTitle, pageW / 2, currentY, { align: 'center' });
+    // Event Info fields list
+    const infoFields = [
+      { label: 'Event Name :', val: eventName },
+      { label: 'Venue :', val: venue },
+      { label: 'Date :', val: formatDateDMY(date) },
+      { label: 'Time :', val: formatTimeRange(time) },
+      { label: 'Total Attendees :', val: String(attendees.length) }
+    ];
 
-    // ---- Underline below title ----
-    currentY += 3;
-    const titleWidth = doc.getTextWidth(serviceTitle);
-    doc.setLineWidth(0.5);
-    doc.line((pageW - titleWidth) / 2, currentY, (pageW + titleWidth) / 2, currentY);
+    doc.setFontSize(10.5);
+    infoFields.forEach(field => {
+      doc.setFont('times', 'bold');
+      doc.setTextColor(17, 17, 17);
+      doc.text(field.label, 20, currentY);
 
-    currentY += 10;
+      doc.setFont('times', 'normal');
+      doc.text(field.val, 60, currentY);
+      currentY += 6.5;
+    });
 
-    // ---- Two-column metadata ----
-    const leftX = margin + 8;
-    const rightX = pageW / 2 + 5;
-    const lineH = 7;
+    currentY += 4; // Add comfort spacing before list
 
-    doc.setFontSize(10);
+    // ==========================================
+    // DRAW ATTENDANCE MEMBER LIST (No Table)
+    // ==========================================
+    doc.setFontSize(11);
+    doc.setFont('times', 'normal');
+    doc.setTextColor(17, 17, 17);
 
-    // Row 1: Project Name / Venue
-    doc.setFont('helvetica', 'bold');
-    doc.text('Project Name: - ', leftX, currentY);
-    doc.setFont('helvetica', 'normal');
-    doc.text(session.eventName || 'Untitled Event', leftX + doc.getTextWidth('Project Name: - '), currentY);
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('Venue: - ', rightX, currentY);
-    doc.setFont('helvetica', 'normal');
-    doc.text(session.venue || 'N/A', rightX + doc.getTextWidth('Venue: - '), currentY);
-
-    currentY += lineH;
-
-    // Row 2: Date / Time
-    doc.setFont('helvetica', 'bold');
-    doc.text('Date: - ', leftX, currentY);
-    doc.setFont('helvetica', 'normal');
-    doc.text(formatDateDMY(session.date), leftX + doc.getTextWidth('Date: - '), currentY);
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('Time: - ', rightX, currentY);
-    doc.setFont('helvetica', 'normal');
-    doc.text(formatTimeRange(session.eventTime), rightX + doc.getTextWidth('Time: - '), currentY);
-
-    currentY += lineH;
-
-    // Row 3: Total Attendees
-    doc.setFont('helvetica', 'bold');
-    doc.text('Total Attendees: - ', leftX, currentY);
-    doc.setFont('helvetica', 'normal');
-    doc.text(String(presentRecords.length), leftX + doc.getTextWidth('Total Attendees: - '), currentY);
-
-    currentY += lineH + 2;
-
-    // ---- Attendee numbered list with "Rtr." prefix ----
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(0, 0, 0);
-
-    presentRecords.forEach((r, i) => {
-      const num = i + 1;
-      const name = r.memberName || '';
-      // Add designation prefix based on role
+    attendees.forEach((r, idx) => {
+      const num = idx + 1;
       let prefix = 'Rtr. ';
       if (r.role) {
         const roleLower = r.role.toLowerCase();
         if (roleLower.includes('ipp')) prefix = 'Rtr. IPP. ';
-        else if (roleLower.includes('president')) prefix = 'Rtr. ';
       }
-      const line = `${num}. ${prefix}${name}`;
+      const line = `${num}.   ${prefix}${r.memberName || ''}`;
 
-      // Check if we need a new page
-      if (currentY > pageH - margin - 15) {
-        // Bottom bar before new page
-        doc.setFillColor(0, 0, 0);
-        doc.rect(margin, pageH - margin - 6, innerW, 6, 'F');
-
+      // Page overflow check (A4 boundary buffer)
+      if (currentY > pageH - 20) {
         doc.addPage();
-        // Draw border on new page
-        doc.setDrawColor(0, 0, 0);
-        doc.setLineWidth(1.5);
-        doc.rect(margin, margin, innerW, pageH - margin * 2);
-        // Top bar on new page
-        doc.setFillColor(0, 0, 0);
-        doc.rect(margin, margin, innerW, 6, 'F');
-
-        // Watermark on new page
-        if (logoImg) {
-          try {
-            const watermarkSize = 90;
-            const wx = (pageW - watermarkSize) / 2;
-            const wy = 80;
-            const gState = doc.GState({ opacity: 0.08 });
-            doc.saveGraphicsState();
-            doc.setGState(gState);
-            doc.addImage(logoImg, 'PNG', wx, wy, watermarkSize, watermarkSize);
-            doc.restoreGraphicsState();
-          } catch (e) {
-            console.warn('Watermark error on new page:', e);
-          }
-        }
-
-        currentY = margin + 18;
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
-        doc.setTextColor(0, 0, 0);
+        currentY = drawPageTemplate();
       }
 
-      doc.text(line, leftX, currentY);
-      currentY += 6;
+      doc.text(line, 20, currentY);
+      currentY += 7; // Spacious and easy to read
     });
 
-    // ---- Bottom thick bar on every page ----
+    // ==========================================
+    // DYNAMIC PAGE NUMBER FOOTERS (Multi-page only)
+    // ==========================================
     const totalPages = doc.internal.getNumberOfPages();
-    for (let p = 1; p <= totalPages; p++) {
-      doc.setPage(p);
-      doc.setFillColor(0, 0, 0);
-      doc.rect(margin, pageH - margin - 6, innerW, 6, 'F');
+    if (totalPages > 1) {
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        doc.setFont('times', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(120, 120, 120);
+        doc.text(`Page ${p} of ${totalPages}`, pageW / 2, pageH - 12, { align: 'center' });
+      }
     }
 
     const filename = `ROTARACT_PSVPEC_${(session.serviceType || 'Attendance').replace(/[^a-zA-Z0-9]/g, '_')}_${session.eventName?.replace(/[^a-zA-Z0-9]/g, '_') || 'Report'}_${session.date || 'undated'}.pdf`;
@@ -1524,4 +1618,307 @@ function animateCounter(el, target) {
       clearInterval(timer);
     }
   }, duration / steps);
+}
+
+// ============================================================
+// ACCESS CONTROL & ROLE MANAGEMENT MODULE
+// ============================================================
+
+async function checkUserRole(user) {
+  const userEmail = user.email.toLowerCase();
+  const docRef = db.collection('userRoles').doc(userEmail);
+  let docSnap = await docRef.get();
+  
+  if (!docSnap.exists) {
+    // Prevent locking out: if the userRoles collection is completely empty, 
+    // bootstrap the first user as a Sergeant (Admin).
+    try {
+      const collectionSnap = await db.collection('userRoles').limit(1).get();
+      if (collectionSnap.empty) {
+        const defaultRole = {
+          uid: user.uid,
+          email: userEmail,
+          displayName: user.displayName || userEmail.split('@')[0],
+          clubPosition: 'Sergeant',
+          accessMode: 'admin',
+          active: true,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          createdBy: 'system'
+        };
+        await docRef.set(defaultRole);
+        docSnap = await docRef.get();
+      } else {
+        return null;
+      }
+    } catch (err) {
+      console.error('Failed to bootstrap first admin:', err);
+      return null;
+    }
+  }
+  
+  const roleData = docSnap.data();
+  // Check active status
+  if (!roleData || !roleData.active) {
+    return null;
+  }
+  
+  // Link uid if not set
+  if (!roleData.uid) {
+    await docRef.update({
+      uid: user.uid,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    roleData.uid = user.uid;
+  }
+  
+  return roleData;
+}
+
+function applyAccessControlRules() {
+  const mode = APP.userRole ? APP.userRole.accessMode : 'viewer';
+  
+  if (mode === 'admin') {
+    // Show Admin Tabs
+    $$('#nav-tabs [data-tab="attendance"], #mobile-nav [data-tab="attendance"]').forEach(el => el.classList.remove('hidden'));
+    $$('#nav-tabs [data-tab="members"], #mobile-nav [data-tab="members"]').forEach(el => el.classList.remove('hidden'));
+    $$('#nav-tabs [data-tab="settings"], #mobile-nav [data-tab="settings"]').forEach(el => el.classList.remove('hidden'));
+    $('#settings-access-control-card')?.classList.remove('hidden');
+  } else {
+    // Hide Protected Tabs
+    $$('#nav-tabs [data-tab="attendance"], #mobile-nav [data-tab="attendance"]').forEach(el => el.classList.add('hidden'));
+    $$('#nav-tabs [data-tab="members"], #mobile-nav [data-tab="members"]').forEach(el => el.classList.add('hidden'));
+    $$('#nav-tabs [data-tab="settings"], #mobile-nav [data-tab="settings"]').forEach(el => el.classList.add('hidden'));
+    $('#settings-access-control-card')?.classList.add('hidden');
+    
+    // Redirect viewer if on a prohibited tab
+    if (['attendance', 'members', 'settings'].includes(APP.currentTab)) {
+      switchTab('dashboard');
+    }
+  }
+}
+
+async function handleBlockedLogout() {
+  try {
+    await auth.signOut();
+    showToast('Signed out successfully', 'info');
+  } catch (err) {
+    showToast('Logout failed', 'error');
+  }
+}
+
+async function fetchUserRoles() {
+  try {
+    const snapshot = await db.collection('userRoles').orderBy('email').get();
+    APP.userRoles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (err) {
+    console.error('Error fetching user roles:', err);
+    throw err;
+  }
+}
+
+function renderUserRoles() {
+  const container = $('#role-users-list');
+  if (!container) return;
+
+  const searchQuery = ($('#role-search')?.value || '').toLowerCase().trim();
+  let filtered = APP.userRoles;
+
+  if (searchQuery) {
+    filtered = filtered.filter(u => (u.email || '').toLowerCase().includes(searchQuery));
+  }
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <tr>
+        <td colspan="5" class="text-center" style="padding:20px; color:var(--text-tertiary);">
+          No user roles found.
+        </td>
+      </tr>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map(u => {
+    const statusText = u.active ? 'Active' : 'Inactive';
+    const statusClass = u.active ? 'badge-present' : 'badge-absent';
+    const modeClass = u.accessMode === 'admin' ? 'badge-board' : 'badge-other';
+    
+    // Disable operations on own self to prevent accidental self-deletion or lockout
+    const isSelf = auth.currentUser && auth.currentUser.email.toLowerCase() === u.email.toLowerCase();
+    const actionButtons = isSelf ? `
+      <span style="font-size:0.75rem; color:var(--text-tertiary); font-style:italic; padding-right:8px;">Current User</span>
+    ` : `
+      <button class="btn-icon" onclick="openEditRoleModal('${escapeHtml(u.email)}')" title="Edit User"><i class="fas fa-edit"></i></button>
+      <button class="btn-icon" style="color:${u.active ? 'var(--danger)' : 'var(--success)'};" onclick="toggleUserActive('${escapeHtml(u.email)}', ${u.active})" title="${u.active ? 'Deactivate' : 'Activate'}">
+        <i class="fas ${u.active ? 'fa-user-slash' : 'fa-user-check'}"></i>
+      </button>
+      <button class="btn-icon danger" onclick="deleteUserRole('${escapeHtml(u.email)}')" title="Delete User"><i class="fas fa-trash-alt"></i></button>
+    `;
+
+    return `
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:12px 10px; font-weight:600; word-break:break-all;">${escapeHtml(u.email)}</td>
+        <td style="padding:12px 10px;">${escapeHtml(u.clubPosition)}</td>
+        <td style="padding:12px 10px;"><span class="badge ${modeClass}">${escapeHtml(u.accessMode)}</span></td>
+        <td style="padding:12px 10px;"><span class="badge ${statusClass}">${statusText}</span></td>
+        <td style="padding:12px 10px; text-align:right;">
+          <div style="display:flex; justify-content:flex-end; gap:8px; align-items:center;">
+            ${actionButtons}
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+function openAddRoleModal() {
+  APP.editingUserRoleEmail = null;
+  $('#role-modal-title').textContent = 'Add User Access';
+  $('#role-email').value = '';
+  $('#role-email').disabled = false;
+  $('#role-position').value = '';
+  $('#role-mode').value = 'viewer';
+  $('#role-active').value = 'true';
+  showModal('role-modal');
+}
+
+function openEditRoleModal(email) {
+  const userRole = APP.userRoles.find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (!userRole) return;
+
+  APP.editingUserRoleEmail = email;
+  $('#role-modal-title').textContent = 'Edit User Access';
+  $('#role-email').value = userRole.email;
+  $('#role-email').disabled = true; // Email is the identifier, cannot be modified
+  $('#role-position').value = userRole.clubPosition;
+  $('#role-mode').value = userRole.accessMode;
+  $('#role-active').value = String(userRole.active);
+  showModal('role-modal');
+}
+
+function autoAssignAccessMode() {
+  const pos = $('#role-position').value;
+  const modeInput = $('#role-mode');
+  if (!modeInput) return;
+  
+  if (pos === 'Sergeant') {
+    modeInput.value = 'admin';
+  } else {
+    modeInput.value = 'viewer';
+  }
+}
+
+async function saveUserRole(event) {
+  event.preventDefault();
+  
+  if (!APP.userRole || APP.userRole.accessMode !== 'admin') {
+    showToast('Permission Denied', 'error');
+    return;
+  }
+
+  const email = $('#role-email').value.trim().toLowerCase();
+  const position = $('#role-position').value;
+  const accessMode = $('#role-mode').value;
+  const active = $('#role-active').value === 'true';
+
+  if (!email || !position) {
+    showToast('Please fill all required fields.', 'warning');
+    return;
+  }
+
+  const btn = $('#save-role-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+  try {
+    const docRef = db.collection('userRoles').doc(email);
+    
+    if (APP.editingUserRoleEmail) {
+      // Edit mode
+      await docRef.update({
+        clubPosition: position,
+        accessMode,
+        active,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      showToast('Access role updated successfully.', 'success');
+    } else {
+      // Create mode
+      const existing = await docRef.get();
+      if (existing.exists) {
+        showToast('This user email already has a configured role.', 'warning');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Save Access';
+        return;
+      }
+      
+      const newRole = {
+        email,
+        uid: '', // Linked on first login
+        displayName: email.split('@')[0],
+        clubPosition: position,
+        accessMode,
+        active,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        createdBy: auth.currentUser?.email || 'unknown'
+      };
+      
+      await docRef.set(newRole);
+      showToast('New access role added.', 'success');
+    }
+
+    hideModal('role-modal');
+    await fetchUserRoles();
+    renderUserRoles();
+  } catch (err) {
+    console.error('Error saving user role:', err);
+    showToast('Failed to save user role mappings.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-save"></i> Save Access';
+  }
+}
+
+async function toggleUserActive(email, currentStatus) {
+  if (!APP.userRole || APP.userRole.accessMode !== 'admin') {
+    showToast('Permission Denied', 'error');
+    return;
+  }
+
+  try {
+    await db.collection('userRoles').doc(email).update({
+      active: !currentStatus,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    showToast(`User status set to ${!currentStatus ? 'Active' : 'Inactive'}.`, 'success');
+    await fetchUserRoles();
+    renderUserRoles();
+  } catch (err) {
+    console.error('Error toggling active state:', err);
+    showToast('Failed to update status.', 'error');
+  }
+}
+
+function deleteUserRole(email) {
+  if (!APP.userRole || APP.userRole.accessMode !== 'admin') {
+    showToast('Permission Denied', 'error');
+    return;
+  }
+
+  showConfirm(
+    'Delete Access Rule?',
+    `Are you sure you want to delete access credentials for ${email}?`,
+    async () => {
+      try {
+        await db.collection('userRoles').doc(email).delete();
+        showToast('User access role deleted.', 'success');
+        await fetchUserRoles();
+        renderUserRoles();
+      } catch (err) {
+        console.error('Error deleting user role:', err);
+        showToast('Failed to delete access rule.', 'error');
+      }
+    },
+    'danger'
+  );
 }
