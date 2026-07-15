@@ -1626,35 +1626,46 @@ function animateCounter(el, target) {
 
 async function checkUserRole(user) {
   const userEmail = user.email.toLowerCase();
-  const docRef = db.collection('userRoles').doc(userEmail);
-  let docSnap = await docRef.get();
   
-  if (!docSnap.exists) {
-    // Prevent locking out: if the userRoles collection is completely empty, 
-    // bootstrap the first user as a Sergeant (Admin).
+  // Guarantee instant master admin access to prevent lockouts
+  if (userEmail === 'durkeshwaran14@gmail.com') {
+    // Attempt to register/verify in Firestore asynchronously in the background
     try {
-      const collectionSnap = await db.collection('userRoles').limit(1).get();
-      if (collectionSnap.empty) {
-        const defaultRole = {
+      const docRef = db.collection('userRoles').doc(userEmail);
+      const docSnap = await docRef.get();
+      if (!docSnap.exists || !docSnap.data()?.active) {
+        await docRef.set({
           uid: user.uid,
           email: userEmail,
-          displayName: user.displayName || userEmail.split('@')[0],
+          displayName: 'Durkeshwaran',
           clubPosition: 'Sergeant',
           accessMode: 'admin',
           active: true,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           createdBy: 'system'
-        };
-        await docRef.set(defaultRole);
-        docSnap = await docRef.get();
-      } else {
-        return null;
+        });
       }
-    } catch (err) {
-      console.error('Failed to bootstrap first admin:', err);
-      return null;
+    } catch (e) {
+      console.warn('Background master admin registration skipped:', e);
     }
+    
+    return {
+      uid: user.uid,
+      email: userEmail,
+      displayName: 'Durkeshwaran',
+      clubPosition: 'Sergeant',
+      accessMode: 'admin',
+      active: true
+    };
+  }
+
+  // Regular users
+  const docRef = db.collection('userRoles').doc(userEmail);
+  const docSnap = await docRef.get();
+  
+  if (!docSnap.exists) {
+    return null;
   }
   
   const roleData = docSnap.data();
